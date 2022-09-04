@@ -1,7 +1,8 @@
 import pandas
 import requests
+import snowflake.connector
 import streamlit
-
+from urllib.error import URLError
 
 streamlit.title('My new healthy diner')
 
@@ -22,14 +23,44 @@ fruits_to_show = my_fruit_list.loc[fruits_selected]
 # Display the table on the page.
 streamlit.dataframe(fruits_to_show)
 
+def get_fruityvice_data(fruit_choice):
+    fruityvice_res = requests.get(f'https://fruityvice.com/api/fruit/{fruit_choice}')
+    fruityvice_normalized = pandas.json_normalize(fruityvice_res.json())
+    return fruityvice_normalized
+
 
 streamlit.header('Fruityvice Fruit Advice!')
+try:
+    fruit_choice = streamlit.text_input('What fruit would you like information about?', 'Kiwi')
+    if not fruit_choice:
+        streamlit.error('Please enter fruit name to get information.')
+    else:
+        fruityvice_data = get_fruityvice_data(fruit_choice)
+        streamlit.dataframe(fruityvice_data)
 
-fruit_choice = streamlit.text_input('What fruit would you like information about?', 'Kiwi')
-streamlit.write('The user entered', fruit_choice)
-fruityvice_res = requests.get(f'https://fruityvice.com/api/fruit/{fruit_choice}')
-# normalize the json response.
-fruityvice_normalized = pandas.json_normalize(fruityvice_res.json())
-# Display it as table.
-streamlit.dataframe(fruityvice_normalized)
+except URLError as e:
+    streamlit.error()
+
+
+my_cnx = snowflake.connector.connect(**streamlit.secrets["snowflake"])
+
+def get_fruit_list():
+    with my_cnx.cursor() as my_cur:
+        my_cur.execute("select * from fruit_load_list")
+        return my_cur.fetchall()
+
+streamlit.header("Our Fruit List:")
+if streamlit.button('Get Fruit List'):
+    fruit_list = get_fruit_list()
+    streamlit.dataframe(fruit_list)
+
+def add_fruit(new_fruit):
+    with my_cnx.cursor() as my_cur:
+        my_cur.execute(f"insert into fruit_load_list values ('{new_fruit}')")
+        return f'Thanks for adding {new_fruit}'
+
+new_fruit = streamlit.text_input('What fruit would you like add?')
+if streamlit.button('Add your Favorite'):
+    streamlit.text(add_fruit(new_fruit))
+
 
